@@ -67,7 +67,7 @@ export class AuthService {
       const payload = this.jwtService.verify(refreshToken, {
         secret: this.configService.get('JWT_REFRESH_SECRET'),
       });
-      const user = await this.usersService.findById(payload.sub);
+      const user = await this.usersService.findById(payload.userId);
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
@@ -87,7 +87,7 @@ export class AuthService {
       const payload = this.jwtService.verify(token, {
         secret: this.configService.get('JWT_SECRET'),
       });
-      const user = await this.usersService.findOne(payload.sub);
+      const user = await this.usersService.findOne(payload.userId);
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
@@ -262,7 +262,7 @@ export class AuthService {
     } catch (error) {
       throw new UnauthorizedException('Invalid or expired password reset token');
     }
-    const user = await this.usersService.findById(payload.sub);
+    const user = await this.usersService.findById(payload.userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -283,5 +283,35 @@ export class AuthService {
       secret: this.configService.get('JWT_SECRET'),
       expiresIn: '7d',
     });
+  }
+
+  async getAccountDetails(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    return user;
+  }
+
+  // Update account details (email is not updated)
+  async updateAccountDetails(payload: any) {
+    const user = await this.usersService.findByEmail(payload.email);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    // Update fields – note that we update the "name" field with primaryContact.
+    const updateData = {
+      name: payload.primaryContact,
+      company_name: payload.companyName,
+      company_website: payload.companyWebsite,
+      job_title: payload.jobTitle,
+      industry: payload.industry,
+      company_size: payload.companySize,
+      phone: payload.phone,
+      location: payload.location,
+      linkedin_profile: payload.linkedIn,
+    };
+    const updatedUser = await this.usersService.update(user.id, updateData);
+    return { message: "Account details updated successfully", user: updatedUser };
   }
 }

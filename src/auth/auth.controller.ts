@@ -1,7 +1,8 @@
 // src/auth/auth.controller.ts
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import { JwtAuthGuard } from './guards/auth.guards';
 
 @Controller('auth')
 export class AuthController {
@@ -73,5 +74,19 @@ export class AuthController {
   ) {
     return this.authService.resetPassword(body.token, body.newPassword);
   }
+
+    // Get account details by email (in production, protect with auth guard)
+    @Get('account/details')
+    @UseGuards(JwtAuthGuard)
+    async getAccountDetails(@Query('email') email: string) {
+      return this.authService.getAccountDetails(email);
+    }
+  
+    // Update account details (email is read-only)
+    @Post('account/update')
+    @UseGuards(JwtAuthGuard)
+    async updateAccount(@Body() payload: any) {
+      return this.authService.updateAccountDetails(payload);
+    }
 
 }

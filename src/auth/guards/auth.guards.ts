@@ -22,33 +22,4 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 }
-
-@Injectable()
-export class GoogleAuthGuard extends AuthGuard('google') {
-  constructor() {
-    super({
-      accessType: 'offline',
-      prompt: 'select_account'
-    });
-  }
-
-  canActivate(context: ExecutionContext): Promise<boolean> | boolean {
-    const activate = (super.canActivate(context) as Promise<boolean>);
-    const request = context.switchToHttp().getRequest();
-    
-    activate.then(async () => {
-      await super.logIn(request);
-    });
-
-    return activate;
-  }
-
-  handleRequest(err: any, user: any) {
-    if (err || !user) {
-      throw err;
-    }
-    return user;
-  }
-}
-
 export const Public = () => SetMetadata('isPublic', true);
