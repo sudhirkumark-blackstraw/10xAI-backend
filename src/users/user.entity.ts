@@ -6,7 +6,7 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Primary Contact Name (used as user's name)
+  // User’s name (Primary Contact Name)
   @Column()
   name: string;
 
@@ -25,7 +25,7 @@ export class User {
   @Column({ default: 'user' })
   role: string;
 
-  // New columns for account details:
+  // Account details
   @Column({ nullable: true })
   company_name: string;
 
@@ -49,6 +49,10 @@ export class User {
 
   @Column({ nullable: true })
   linkedin_profile: string;
+
+  // Stripe Customer ID
+  @Column({ nullable: true })
+  stripe_customer_id: string;
 
   @CreateDateColumn()
   created_at: Date;

@@ -8,11 +8,12 @@ import { User } from 'src/users/user.entity';
 import { OAuth2Client } from 'google-auth-library';
 import { MailService } from '../mail/mail.service';
 import axios from 'axios';
+import Stripe from 'stripe';
 
 @Injectable()
 export class AuthService {
-
   private googleClient: OAuth2Client;
+  private stripe: Stripe;
 
   constructor(
     private usersService: UsersService,
@@ -21,6 +22,15 @@ export class AuthService {
     private mailService: MailService,
   ) {
     this.googleClient = new OAuth2Client(this.configService.get('GOOGLE_CLIENT_ID'));
+      // Retrieve Stripe secret key and ensure it's defined.
+      const stripeSecretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+      if (!stripeSecretKey) {
+        throw new Error('Stripe Secret Key is not defined in configuration');
+      }
+      // Updated to the required API version per internal guidelines.
+      this.stripe = new Stripe(stripeSecretKey, {
+        apiVersion: '2024-12-18.acacia',
+      });
   }
 
   async validateUser(email: string, password: string): Promise<any> {
@@ -37,8 +47,7 @@ export class AuthService {
     if (!validUser) {
       throw new UnauthorizedException('Invalid credentials');
     }
-
-    const payload = { email: validUser.email, userId: validUser.id, userName: validUser.name };
+    const payload = { email: validUser.email, userId: validUser.id, userName: validUser.name, stripeCustomerId: validUser.stripe_customer_id };
     return {
       token: this.generateToken(payload),
       refreshToken: this.generateRefreshToken(payload),
@@ -53,14 +62,21 @@ export class AuthService {
       password: hashedPassword,
     });
 
-    const payload = { email: user.email, userId: user.id, userName: user.name };
+    // Create a Stripe customer for the new user.
+    const stripeCustomer = await this.stripe.customers.create({
+      email: user.email,
+      name: user.name,
+    });
+    // Update the user record with the Stripe customer ID.
+    await this.usersService.update(user.id, { stripe_customer_id: stripeCustomer.id });
+
+    const payload = { email: user.email, userId: user.id, userName: user.name, stripeCustomerId: user.stripe_customer_id};
     return {
       token: this.generateToken(payload),
       refreshToken: this.generateRefreshToken(payload),
       payload,
     };
   }
-
 
   async refreshToken(refreshToken: string) {
     try {
@@ -71,7 +87,7 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
-      const newPayload = { email: user.email, userId: user.id, userName: user.name };
+      const newPayload = { email: user.email, userId: user.id, userName: user.name, stripeCustomerId: user.stripe_customer_id };
       return {
         token: this.generateToken(payload),
         refreshToken: this.generateRefreshToken(newPayload),
@@ -91,7 +107,7 @@ export class AuthService {
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
-      return { email: user.email, userId: user.id, userName: user.name };
+      return { email: user.email, userId: user.id, userName: user.name, stripeCustomerId: user.stripe_customer_id };
     } catch (e) {
       throw new UnauthorizedException('Invalid token');
     }
@@ -111,15 +127,23 @@ export class AuthService {
     if (!payload) {
       throw new UnauthorizedException('Invalid Google token payload');
     }
-    const { email, name, userId: googleId } = payload;
+    const { email, name } = payload;
     let user = await this.usersService.findByEmail(email);
     if (!user) {
       user = await this.usersService.create({
         name: name,
         email: email,
         password: '', // For social login, password can be empty
-        google_id: googleId,
+        google_id: payload.sub,
       });
+    }
+    // Ensure the user has a Stripe customer ID.
+    if (!user.stripe_customer_id) {
+      const stripeCustomer = await this.stripe.customers.create({
+        email: user.email,
+        name: user.name,
+      });
+      await this.usersService.update(user.id, { stripe_customer_id: stripeCustomer.id });
     }
     const payloadForJwt = { email: user.email, userId: user.id };
     return {
@@ -188,6 +212,14 @@ export class AuthService {
           linkedin_id: linkedinId,
         });
       }
+      // Ensure the user has a Stripe customer ID.
+      if (!user.stripe_customer_id) {
+        const stripeCustomer = await this.stripe.customers.create({
+          email: user.email,
+          name: user.name,
+        });
+        await this.usersService.update(user.id, { stripe_customer_id: stripeCustomer.id });
+      }
       const payloadForJwt = { email: user.email, userId: user.id };
       return {
         token: this.generateToken(payloadForJwt),
@@ -199,7 +231,6 @@ export class AuthService {
     }
   }
 
-  // LinkedIn callback: exchange authorization code for access token, then login.
   async linkedinCallback(code: string) {
     const clientId = this.configService.get('LINKEDIN_CLIENT_ID');
     const clientSecret = this.configService.get('LINKEDIN_CLIENT_SECRET');
@@ -230,7 +261,6 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const user = await this.usersService.findByEmail(email);
-    // Always return the same message to prevent email enumeration.
     const message = 'If that email exists, a password reset link has been sent.';
     if (!user) {
       return { message };
@@ -243,7 +273,6 @@ export class AuthService {
     const frontendUrl = this.configService.get('FRONTEND_URL'); // e.g., https://yourdomain.com
     const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
-    // Load the "forgot-password" email template and compile it.
     const html = this.mailService.loadTemplate('forgot-password', {
       name: user.name,
       resetLink,
@@ -252,7 +281,6 @@ export class AuthService {
     return { message };
   }
 
-  // --- Reset Password ---
   async resetPassword(token: string, newPassword: string) {
     let payload;
     try {
@@ -266,7 +294,6 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    // Hash the new password and update the user record.
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await this.usersService.update(user.id, { password_hash: hashedPassword });
     return { message: 'Password has been reset successfully' };
@@ -278,6 +305,7 @@ export class AuthService {
       expiresIn: '7d',
     });
   }
+
   private generateToken(payload: any): string {
     return this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_SECRET'),
@@ -293,13 +321,11 @@ export class AuthService {
     return user;
   }
 
-  // Update account details (email is not updated)
   async updateAccountDetails(payload: any) {
     const user = await this.usersService.findByEmail(payload.email);
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    // Update fields – note that we update the "name" field with primaryContact.
     const updateData = {
       name: payload.primaryContact,
       company_name: payload.companyName,

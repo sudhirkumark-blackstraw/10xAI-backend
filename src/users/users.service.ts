@@ -26,6 +26,9 @@ export class UsersService {
             name: createUserDto.name,
             email: createUserDto.email,
             password_hash: createUserDto.password,
+            google_id: createUserDto.google_id,
+            linkedin_id: createUserDto.linkedin_id,
+            stripe_customer_id: createUserDto.stripe_customer_id,
             role: 'user',
         });
 
