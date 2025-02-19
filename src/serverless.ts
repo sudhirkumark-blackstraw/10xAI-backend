@@ -7,7 +7,8 @@ import { ValidationPipe } from '@nestjs/common';
 
 const server = express();
 
-async function bootstrap() {
+// Create a promise for bootstrapping the Nest app
+const bootstrapPromise = (async () => {
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
   app.useGlobalPipes(new ValidationPipe());
   app.enableCors({
@@ -16,15 +17,11 @@ async function bootstrap() {
     credentials: true,
   });
   await app.init();
+})();
 
-  // If running locally, start listening on a port
-  if (process.env.NODE_ENV !== 'production') {
-    const port = process.env.PORT || 3005;
-    server.listen(port, () => {
-      console.log(`Server running locally on port ${port}`);
-    });
-  }
-}
-bootstrap();
-
-export default server;
+// Export a handler function that waits for bootstrap to finish
+export default async (req, res) => {
+  await bootstrapPromise;
+  // Delegate the request to the Express server
+  server(req, res);
+};
