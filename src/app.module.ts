@@ -5,6 +5,8 @@ import { StripeModule } from './stripe/stripe.module';
 import { UsersModule } from './users/users.module';
 import { ConfigModule } from '@nestjs/config';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -30,5 +32,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     SubscriptionModule,
     UsersModule,
   ],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
